@@ -23,7 +23,7 @@ A personal investment analysis web app for studying the market with friends.
 ```bash
 cd backend
 uv sync                          # installs Python + dependencies into .venv
-uv run uvicorn src.main:app --reload --port 8000
+uv run uvicorn src.main:app --reload --reload-dir src --port 8000
 ```
 
 Backend runs at http://localhost:8000 — health check at http://localhost:8000/health

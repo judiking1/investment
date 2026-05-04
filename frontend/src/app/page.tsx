@@ -9,8 +9,21 @@ type HealthState =
   | { status: 'ok'; serverTime: string }
   | { status: 'error'; message: string };
 
+type Stock = {
+  ticker: string;
+  name: string;
+  market: string;
+  sector: string | null;
+};
+
+type StocksState =
+  | { status: 'loading' }
+  | { status: 'ok'; count: number; stocks: Stock[] }
+  | { status: 'error'; message: string };
+
 export default function Home() {
   const [health, setHealth] = useState<HealthState>({ status: 'loading' });
+  const [stocks, setStocks] = useState<StocksState>({ status: 'loading' });
 
   useEffect(() => {
     const controller = new AbortController();
@@ -24,6 +37,20 @@ export default function Home() {
       .catch((err: unknown) => {
         if (err instanceof Error && err.name === 'AbortError') return;
         setHealth({
+          status: 'error',
+          message: err instanceof Error ? err.message : String(err),
+        });
+      });
+
+    fetch(`${API_URL}/stocks`, { signal: controller.signal })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = (await res.json()) as { count: number; stocks: Stock[] };
+        setStocks({ status: 'ok', count: data.count, stocks: data.stocks });
+      })
+      .catch((err: unknown) => {
+        if (err instanceof Error && err.name === 'AbortError') return;
+        setStocks({
           status: 'error',
           message: err instanceof Error ? err.message : String(err),
         });
@@ -88,8 +115,60 @@ export default function Home() {
           </div>
         </section>
 
+        <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="flex items-baseline justify-between">
+            <h2 className="text-xs font-semibold uppercase tracking-[0.15em] text-slate-500 dark:text-slate-400">
+              등록된 종목
+            </h2>
+            {stocks.status === 'ok' && (
+              <span className="text-3xl font-bold tabular-nums text-slate-900 dark:text-slate-50">
+                {stocks.count.toLocaleString('ko-KR')}
+              </span>
+            )}
+          </div>
+
+          <div className="mt-4">
+            {stocks.status === 'loading' && (
+              <div className="flex items-center gap-3">
+                <span className="size-2.5 animate-pulse rounded-full bg-slate-400" />
+                <span className="text-slate-600 dark:text-slate-300">불러오는 중...</span>
+              </div>
+            )}
+            {stocks.status === 'ok' && stocks.count === 0 && (
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                아직 종목이 없습니다. 다음 단계에서 KOSPI 200 종목을 자동으로 채울 예정이에요.
+              </p>
+            )}
+            {stocks.status === 'ok' && stocks.count > 0 && (
+              <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+                {stocks.stocks.slice(0, 10).map((s) => (
+                  <li
+                    key={s.ticker}
+                    className="flex items-center justify-between py-2.5 text-sm"
+                  >
+                    <div>
+                      <span className="font-medium text-slate-900 dark:text-slate-100">{s.name}</span>
+                      <span className="ml-2 font-mono text-xs text-slate-400">{s.ticker}</span>
+                    </div>
+                    <span className="text-xs text-slate-500 dark:text-slate-400">{s.market}</span>
+                  </li>
+                ))}
+                {stocks.count > 10 && (
+                  <li className="pt-3 text-xs text-slate-400">… 외 {stocks.count - 10}개</li>
+                )}
+              </ul>
+            )}
+            {stocks.status === 'error' && (
+              <div className="text-sm">
+                <div className="text-rose-600 dark:text-rose-400">불러오기 실패</div>
+                <div className="mt-1 font-mono text-xs text-slate-400">{stocks.message}</div>
+              </div>
+            )}
+          </div>
+        </section>
+
         <footer className="text-xs text-slate-400 dark:text-slate-500">
-          Phase 0 · 인프라 점검 단계
+          Phase 1.1 · 데이터베이스 스키마 + 종목 조회
         </footer>
       </div>
     </main>
