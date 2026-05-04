@@ -168,7 +168,7 @@ export default function Home() {
         </section>
 
         <footer className="text-xs text-slate-400 dark:text-slate-500">
-          Phase 1.1 · 데이터베이스 스키마 + 종목 조회
+          Phase 1.2 · KOSPI 종목 마스터 수집
         </footer>
       </div>
     </main>

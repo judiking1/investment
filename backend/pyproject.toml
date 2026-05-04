@@ -10,6 +10,7 @@ dependencies = [
     "pydantic-settings>=2.6.0",
     "python-dotenv>=1.0.1",
     "sqlalchemy>=2.0",
+    "finance-datareader>=0.9.110",
 ]
 
 [dependency-groups]

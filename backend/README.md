@@ -23,3 +23,18 @@ The SQLite database is auto-created at `backend/data/investment.db` on startup (
 
 - `GET /health` — liveness probe used by the frontend to verify the backend is reachable
 - `GET /stocks` — list of registered securities, returns `{ count, stocks: [...] }`
+
+## One-shot scripts
+
+Run from the `backend/` directory with `uv run python -m`:
+
+```bash
+uv run python -m scripts.seed_stock_master   # populate stocks with KOSPI top-200 by market cap
+```
+
+`-m` runs the script as a module so `src.*` imports resolve from the current directory.
+
+## Data sources
+
+- **KR equities**: [`finance-datareader`](https://github.com/financedata-org/FinanceDataReader) (Naver Finance backend, no login)
+- We initially tried `pykrx`, but the latest version requires a paid KRX account. Top-N by market cap from FDR covers ~95% of the same names with no auth friction.
