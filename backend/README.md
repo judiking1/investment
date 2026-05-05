@@ -23,16 +23,23 @@ The SQLite database is auto-created at `backend/data/investment.db` on startup (
 
 - `GET /health` — liveness probe used by the frontend to verify the backend is reachable
 - `GET /stocks` — list of registered securities, returns `{ count, stocks: [...] }`
+- `GET /stocks/{ticker}/prices` — OHLCV history for one ticker, returns `{ ticker, name, count, prices: [...] }`
 
 ## One-shot scripts
 
 Run from the `backend/` directory with `uv run python -m`:
 
 ```bash
-uv run python -m scripts.seed_stock_master   # populate stocks with KOSPI top-200 by market cap
+uv run python -m scripts.seed_stock_master              # KOSPI top-200 master
+uv run python -m scripts.seed_daily_prices              # last 30 days OHLCV for everything in `stocks`
+uv run python -m scripts.seed_daily_prices --days 90    # custom window
 ```
 
 `-m` runs the script as a module so `src.*` imports resolve from the current directory.
+
+## Notes on `--reload`
+
+uvicorn's `--reload` works on Windows but occasionally gets stuck after a large code change (the `WatchFiles detected changes` log appears, but the new worker never starts). When that happens, kill the process and restart manually — there's no harm done, and we'll revisit a more stable file watcher if it starts costing noticeable time.
 
 ## Data sources
 
