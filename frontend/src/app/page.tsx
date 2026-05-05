@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
@@ -140,21 +141,25 @@ export default function Home() {
               </p>
             )}
             {stocks.status === 'ok' && stocks.count > 0 && (
-              <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+              <ul className="-mx-2 divide-y divide-slate-100 dark:divide-slate-800">
                 {stocks.stocks.slice(0, 10).map((s) => (
-                  <li
-                    key={s.ticker}
-                    className="flex items-center justify-between py-2.5 text-sm"
-                  >
-                    <div>
-                      <span className="font-medium text-slate-900 dark:text-slate-100">{s.name}</span>
-                      <span className="ml-2 font-mono text-xs text-slate-400">{s.ticker}</span>
-                    </div>
-                    <span className="text-xs text-slate-500 dark:text-slate-400">{s.market}</span>
+                  <li key={s.ticker}>
+                    <Link
+                      href={`/stocks/${s.ticker}`}
+                      className="flex items-center justify-between rounded-md px-2 py-2.5 text-sm transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/40"
+                    >
+                      <div>
+                        <span className="font-medium text-slate-900 dark:text-slate-100">{s.name}</span>
+                        <span className="ml-2 font-mono text-xs text-slate-400">{s.ticker}</span>
+                      </div>
+                      <span className="text-xs text-slate-400 dark:text-slate-500">
+                        {s.market} <span className="ml-1">→</span>
+                      </span>
+                    </Link>
                   </li>
                 ))}
                 {stocks.count > 10 && (
-                  <li className="pt-3 text-xs text-slate-400">… 외 {stocks.count - 10}개</li>
+                  <li className="px-2 pt-3 text-xs text-slate-400">… 외 {stocks.count - 10}개</li>
                 )}
               </ul>
             )}
@@ -168,7 +173,7 @@ export default function Home() {
         </section>
 
         <footer className="text-xs text-slate-400 dark:text-slate-500">
-          Phase 1.2 · KOSPI 종목 마스터 수집
+          Phase 1.3 · 일봉 수집 + 종목별 차트
         </footer>
       </div>
     </main>
