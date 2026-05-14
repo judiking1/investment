@@ -1,0 +1,44 @@
+name: Refresh market data
+
+# Runs every weekday at 06:30 KST (= 21:30 UTC the previous day).
+# KRX closes at 15:30 KST, so by 06:30 the next morning the previous-day OHLCV
+# is settled and available from FinanceDataReader.
+# Also exposed as workflow_dispatch so we can trigger a manual refresh from the
+# GitHub UI (Actions tab → "Refresh market data" → Run workflow).
+on:
+  schedule:
+    - cron: '30 21 * * 0-4'  # Sun–Thu (UTC) == Mon–Fri morning (KST)
+  workflow_dispatch:
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # so we can commit the refreshed JSON back to main
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Sync backend deps
+        working-directory: backend
+        run: uv sync --frozen
+
+      - name: Export static data
+        working-directory: backend
+        run: uv run python -m scripts.export_static_data --days 30
+
+      - name: Commit refreshed data (if changed)
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend/public/data
+          if git diff --cached --quiet; then
+            echo "No data changes — nothing to commit."
+          else
+            git commit -m "chore(data): refresh $(date -u +%Y-%m-%d)"
+            git push
+          fi

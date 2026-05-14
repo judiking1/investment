@@ -33,10 +33,12 @@ out/
 next-env.d.ts
 
 # --- Data (local only, never commit) ---
-data/
+backend/data/
 *.sqlite
 *.sqlite3
 *.db
+# Note: frontend/public/data/ is intentionally committed — it's the static
+# market-data snapshot served by Vercel and refreshed daily by GitHub Actions.
 
 # --- Editor / OS ---
 .vscode/

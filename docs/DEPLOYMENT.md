@@ -1,150 +1,91 @@
-# Deployment Blueprint
+# Deployment
 
-> Target: ≤ 5 friends visit a public URL, see fresh data, no login.
-> Target cost: **0원/month** under each provider's free tier at this scale.
+> **Target**: ≤ 5 friends visit a public URL, data refreshes daily, no login.
+> **Cost**: 0원 (within free tiers).
 
----
-
-## Architecture
+The site is a **static Next.js app** on Vercel. Market data is shipped as JSON files inside the repo, refreshed once a day by a GitHub Actions cron. There is no live backend in production — the FastAPI app in `backend/` only exists for local development and for the export script that builds the JSON.
 
 ```
-┌──────────────┐         ┌────────────────────┐         ┌─────────────────┐
-│  GitHub      │ push    │  Vercel            │  fetch  │  Railway        │
-│  main branch │────────▶│  (Next.js frontend)│────────▶│  (FastAPI       │
-└──────┬───────┘         │  https://*.vercel  │         │   + SQLite)     │
-       │                 └────────────────────┘         │  https://*.up.  │
-       │                                                │   railway.app   │
-       │                                                └────────┬────────┘
-       │  schedule (cron)                                        │
-       │                                                         │ writes
-       │  ┌──────────────────────┐                               ▼
-       └─▶│ GitHub Actions       │  POST trigger / SSH /     ┌────────┐
-          │ (daily data refresh) │──────────────────────────▶│  *.db  │
-          └──────────────────────┘                           └────────┘
+GitHub Actions (every weekday 06:30 KST)
+    │
+    │  uv run python -m scripts.export_static_data
+    │  → writes frontend/public/data/*.json
+    │  → git commit + push to main
+    ▼
+GitHub repo (main)
+    │  auto-deploy webhook
+    ▼
+Vercel (Next.js static site)
+    │
+    ▼
+https://<your-vercel-url>
 ```
 
-Three services, each free at our scale:
+---
 
-| Layer | Provider | Why this one |
-|-------|----------|-------------|
-| Frontend hosting | **Vercel** | Made by the Next.js team; `vercel` reads our Next config out of the box; preview URLs per PR |
-| Backend hosting | **Railway** | Free $5/month credit covers a sleeping FastAPI + SQLite; one-click deploy from GitHub |
-| Daily data refresh | **GitHub Actions** (cron) | Free 2,000 minutes/month for public repos; no extra service to babysit |
+## What you (the human) actually have to do
+
+A one-time **5-click setup**. Code is already in place.
+
+### 1. Sign in to Vercel with GitHub
+
+<https://vercel.com/signup> → "Continue with GitHub". 30 seconds.
+
+### 2. Import the repo
+
+- Click **Add New… → Project**
+- Pick `judiking1/investment`
+- Vercel detects Next.js automatically. Two settings to change:
+  - **Root Directory**: `frontend`
+  - Everything else: leave default
+- Click **Deploy**. First build takes ~2 minutes.
+
+### 3. Visit your URL
+
+Vercel gives you something like `https://investment-judiking1.vercel.app`. Open it on your phone, click any stock → chart loads. Send the URL to a friend to confirm it loads cold.
+
+### 4. Enable the daily refresh
+
+The workflow file (`.github/workflows/refresh-data.yml`) is already committed. On the GitHub repo:
+
+- **Settings → Actions → General → Workflow permissions** → set to **"Read and write permissions"**. Without this, the bot can't commit refreshed data back to main.
+- **Actions tab → "Refresh market data" → Run workflow** (manual one-time run to confirm it works).
+
+After that, the cron runs Mon–Fri at 06:30 KST automatically. Each successful run pushes a commit like `chore(data): refresh 2026-05-15`, Vercel re-deploys in ~1 minute, friends see fresh data.
 
 ---
 
-## Why not …?
+## What you don't need
 
-- **Vercel for backend too?** Vercel serverless functions don't keep a SQLite file between invocations; we'd have to move to a hosted Postgres (Supabase, Neon). Possible later, but extra complexity for now.
-- **Fly.io instead of Railway?** Fewer cold starts, but the deploy story is heavier (Dockerfile, fly.toml). Railway's "deploy from repo" wins for a 5-friend project.
-- **Self-hosted on user's machine + ngrok?** Requires the laptop to stay on. Not great for daily-cron.
-- **Cloudflare Workers + D1?** Real option for v2 if Railway costs ever creep up — D1 is a hosted SQLite that fits our schema almost as-is.
+- ~~Railway account~~
+- ~~Custom backend hosting~~
+- ~~CORS configuration in production~~
+- ~~Environment variables on Vercel~~ (no `NEXT_PUBLIC_API_URL`)
+- ~~Bearer-token-protected `/admin/refresh` endpoint~~
+- ~~Persistent volume for SQLite~~
 
----
-
-## Pre-flight checklist
-
-- [ ] GitHub account (already have — `judiking1/investment`)
-- [ ] Vercel account → sign in with GitHub: <https://vercel.com/signup>
-- [ ] Railway account → sign in with GitHub: <https://railway.com/login>
-- [ ] (Optional) Custom domain — not required for friends-only
+All gone because the frontend reads JSON files from its own `public/` directory at runtime — no network round-trip to any server we own.
 
 ---
 
-## Step 1 — Frontend on Vercel
+## When this will stop being enough
 
-Vercel auto-detects Next.js. Two settings to remember:
+Move to a real backend (Railway, Fly.io, or self-hosted) when **any** of these become true:
 
-1. **Root directory**: `frontend` (the repo has both `backend/` and `frontend/`)
-2. **Environment variable**: `NEXT_PUBLIC_API_URL` = the Railway URL we'll get in Step 2
+1. **Phase 4 — paper trading**: users will submit buy/sell decisions and we need to persist their portfolios per-user
+2. **Real-time data needed**: intraday refresh, push notifications, live order book — not on the roadmap
+3. **Repo size grows past a few MB of data**: at ~5MB/year we're fine; at 50MB+ we'd shard to a data branch or external storage
+4. **LLM responses need to be cached server-side** (Phase 3 will probably cache responses inside the same JSON pipeline first; only escalate if costs spike)
 
-Initial deploy will fail-soft because the env var doesn't exist yet — that's fine; we'll redeploy after Step 2.
-
----
-
-## Step 2 — Backend on Railway
-
-Railway also auto-detects Python projects, but we need to nudge it:
-
-1. **Root directory**: `backend`
-2. **Build command** (auto-detected from `pyproject.toml` + `uv.lock`): `uv sync --frozen`
-3. **Start command**: `uv run uvicorn src.main:app --host 0.0.0.0 --port $PORT`
-   - Railway injects `$PORT`; do **not** hardcode `8000`
-   - Drop `--reload` and `--reload-dir src` (those are dev-only)
-4. **Persistent volume**: mount one at `/app/backend/data` so SQLite survives redeploys
-5. **Environment variables** (Railway dashboard):
-   - `ANTHROPIC_API_KEY` — leave empty until Phase 3
-   - `DATABASE_URL` — leave default (it points at the mounted volume via `src/config.py`)
-6. **CORS**: in `backend/src/main.py`, `allow_origins` is currently `["http://localhost:3000"]`. Add the Vercel URL there before deploy:
-   ```python
-   allow_origins=[
-       "http://localhost:3000",
-       "https://investment-<your-handle>.vercel.app",
-   ]
-   ```
-
-After deploy, Railway gives you a URL like `https://investment-production.up.railway.app`. Copy this back into Vercel's `NEXT_PUBLIC_API_URL` and redeploy frontend.
+Until then, static deployment matches our scale and our budget exactly.
 
 ---
 
-## Step 3 — Daily data refresh via GitHub Actions
+## How to refresh data manually (for development)
 
-Create `.github/workflows/refresh-data.yml`:
-
-```yaml
-name: Refresh market data
-
-on:
-  schedule:
-    - cron: '30 21 * * 1-5'  # 06:30 KST Mon–Fri (KRX opens 09:00)
-  workflow_dispatch:        # also allow manual trigger from GitHub UI
-
-jobs:
-  refresh:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Trigger backend refresh endpoint
-        run: |
-          curl --fail-with-body -X POST \
-            -H "Authorization: Bearer ${{ secrets.REFRESH_TOKEN }}" \
-            "${{ secrets.BACKEND_URL }}/admin/refresh"
+```bash
+cd backend
+uv run python -m scripts.export_static_data --days 30
 ```
 
-This requires us to **add a `POST /admin/refresh` endpoint to the backend** that runs both seed scripts and is gated by a shared bearer token. That's a small Phase 1.4 task — lighter than spinning up Actions runner with the whole Python toolchain.
-
-GitHub secrets to set on the repo:
-- `BACKEND_URL` — the Railway URL
-- `REFRESH_TOKEN` — any random string; the backend checks `Authorization: Bearer <same string>`
-
----
-
-## Step 4 — Smoke test
-
-After all three steps:
-
-- [ ] Open the Vercel URL on a phone — main page loads, "등록된 종목 200" visible
-- [ ] Click any stock — chart renders
-- [ ] Trigger the GH Action manually (`workflow_dispatch`) — verify 200 OK, then refresh the site to see the latest trading day appear
-- [ ] Send the Vercel URL to one friend, ask them to open it cold — confirms CORS, cold-start, and that they don't hit any login wall
-
----
-
-## Cost guardrails
-
-| Provider | Free tier | Our usage |
-|----------|-----------|-----------|
-| Vercel Hobby | 100 GB-hours/mo, 100 GB bandwidth | Trivial — static-ish site, ≤5 visitors |
-| Railway free | $5 credit/month | A small FastAPI sleeping most of the day stays well under |
-| GitHub Actions | 2,000 min/mo | One curl call per weekday = seconds |
-
-If usage ever exceeds free tier (it won't for 5 users), the upgrade is one click — no migration needed.
-
----
-
-## What this blueprint deliberately leaves out
-
-- **HTTPS for backend** — Railway gives it for free, no work needed
-- **Custom domain** — possible later, not required for "5 friends"
-- **Auth** — user explicitly opted out at this scale
-- **CDN/cache** — Vercel handles edge caching automatically
-- **Database backups** — SQLite on a Railway volume is fine until we have data worth backing up; revisit when Phase 4 (paper trading) starts producing data we can't lose
+This writes `frontend/public/data/stocks.json` and `frontend/public/data/prices/<ticker>.json`. The dev server picks them up immediately; commit + push pushes them to production.

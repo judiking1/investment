@@ -3,12 +3,9 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
-
-type HealthState =
-  | { status: 'loading' }
-  | { status: 'ok'; serverTime: string }
-  | { status: 'error'; message: string };
+// Data is shipped as static JSON committed by the daily GitHub Actions job.
+// See backend/scripts/export_static_data.py and .github/workflows/refresh-data.yml.
+const DATA_BASE = '/data';
 
 type Stock = {
   ticker: string;
@@ -19,35 +16,26 @@ type Stock = {
 
 type StocksState =
   | { status: 'loading' }
-  | { status: 'ok'; count: number; stocks: Stock[] }
+  | { status: 'ok'; count: number; stocks: Stock[]; updatedAt: string | null }
   | { status: 'error'; message: string };
 
 export default function Home() {
-  const [health, setHealth] = useState<HealthState>({ status: 'loading' });
   const [stocks, setStocks] = useState<StocksState>({ status: 'loading' });
 
   useEffect(() => {
     const controller = new AbortController();
 
-    fetch(`${API_URL}/health`, { signal: controller.signal })
-      .then(async (res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = (await res.json()) as { status: string; time: string };
-        setHealth({ status: 'ok', serverTime: data.time });
-      })
-      .catch((err: unknown) => {
-        if (err instanceof Error && err.name === 'AbortError') return;
-        setHealth({
-          status: 'error',
-          message: err instanceof Error ? err.message : String(err),
-        });
-      });
-
-    fetch(`${API_URL}/stocks`, { signal: controller.signal })
+    fetch(`${DATA_BASE}/stocks.json`, { signal: controller.signal })
       .then(async (res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = (await res.json()) as { count: number; stocks: Stock[] };
-        setStocks({ status: 'ok', count: data.count, stocks: data.stocks });
+        const updatedAt = res.headers.get('last-modified');
+        setStocks({
+          status: 'ok',
+          count: data.count,
+          stocks: data.stocks,
+          updatedAt,
+        });
       })
       .catch((err: unknown) => {
         if (err instanceof Error && err.name === 'AbortError') return;
@@ -76,45 +64,6 @@ export default function Home() {
             <span className="font-medium text-slate-900 dark:text-slate-100">이해</span>가 목표입니다.
           </p>
         </header>
-
-        <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <h2 className="text-xs font-semibold uppercase tracking-[0.15em] text-slate-500 dark:text-slate-400">
-            Backend 연결 상태
-          </h2>
-          <div className="mt-4">
-            {health.status === 'loading' && (
-              <div className="flex items-center gap-3">
-                <span className="size-2.5 animate-pulse rounded-full bg-slate-400" />
-                <span className="text-slate-600 dark:text-slate-300">확인 중...</span>
-              </div>
-            )}
-            {health.status === 'ok' && (
-              <div className="flex items-center gap-3">
-                <span className="size-2.5 rounded-full bg-emerald-500" />
-                <div>
-                  <div className="text-slate-900 dark:text-slate-100">연결됨</div>
-                  <div className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
-                    서버 시각 · {new Date(health.serverTime).toLocaleString('ko-KR')}
-                  </div>
-                </div>
-              </div>
-            )}
-            {health.status === 'error' && (
-              <div className="flex items-start gap-3">
-                <span className="mt-1.5 size-2.5 rounded-full bg-rose-500" />
-                <div>
-                  <div className="text-slate-900 dark:text-slate-100">연결 실패</div>
-                  <div className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
-                    Backend가 켜져 있는지 확인하세요 ({API_URL})
-                  </div>
-                  <div className="mt-1 font-mono text-xs text-slate-400 dark:text-slate-500">
-                    {health.message}
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </section>
 
         <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <div className="flex items-baseline justify-between">
@@ -172,8 +121,13 @@ export default function Home() {
           </div>
         </section>
 
-        <footer className="text-xs text-slate-400 dark:text-slate-500">
-          Phase 1.3 · 일봉 수집 + 종목별 차트
+        <footer className="space-y-1 text-xs text-slate-400 dark:text-slate-500">
+          {stocks.status === 'ok' && stocks.updatedAt && (
+            <div>
+              데이터 갱신 · {new Date(stocks.updatedAt).toLocaleString('ko-KR')}
+            </div>
+          )}
+          <div>Phase 1.4 · 정적 JSON으로 배포 준비</div>
         </footer>
       </div>
     </main>

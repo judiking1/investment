@@ -13,7 +13,8 @@ import {
   YAxis,
 } from 'recharts';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
+// See backend/scripts/export_static_data.py
+const DATA_BASE = '/data';
 
 type Price = {
   date: string;
@@ -46,7 +47,7 @@ export default function StockDetailPage() {
     if (!ticker) return;
     const controller = new AbortController();
 
-    fetch(`${API_URL}/stocks/${ticker}/prices`, { signal: controller.signal })
+    fetch(`${DATA_BASE}/prices/${ticker}.json`, { signal: controller.signal })
       .then(async (res) => {
         if (res.status === 404) {
           setState({ status: 'not-found' });
