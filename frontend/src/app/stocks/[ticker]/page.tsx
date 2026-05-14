@@ -184,8 +184,11 @@ function StockDetail({ data }: { data: PricesResponse }) {
                 width={70}
               />
               <Tooltip
-                formatter={(v: number) => [`${v.toLocaleString('ko-KR')}원`, '종가']}
-                labelFormatter={(l: string) => l}
+                formatter={(value): [string, string] => [
+                  `${Number(value).toLocaleString('ko-KR')}원`,
+                  '종가',
+                ]}
+                labelFormatter={(label) => String(label)}
                 contentStyle={{
                   borderRadius: 8,
                   borderColor: '#e2e8f0',
